@@ -1,6 +1,7 @@
 const mongoose=require('mongoose');
 const validator=require('validator');
 const bcrypt=require('bcrypt');
+var jwt = require('jsonwebtoken');
 const _=require('lodash');
 
 var UserSchema= new mongoose.Schema({
@@ -40,6 +41,9 @@ var UserSchema= new mongoose.Schema({
         required:true,
         minlength:6
     },
+    userUrl:{
+        type:String,
+    },
     tokens:[{
         access:{
             type:String,
@@ -56,7 +60,16 @@ var UserSchema= new mongoose.Schema({
 UserSchema.methods.toJSON=function(){
     var user=this;
     var userObject=user.toObject();
-    return _.pick(userObject,['_id','email','firstName','lastName','mobile']);
+    return _.pick(userObject,['_id','email','firstName','lastName','mobile','userUrl']);
+};
+UserSchema.methods.generateAuthToken=function(){
+    var user=this;
+    var access='auth';
+    var token=jwt.sign({_id:user._id.toHexString(),access},'abc123').toString();
+    user.tokens.push({access,token});
+    return user.save().then(()=>{
+        return token;
+    });
 };
 UserSchema.pre('save',function(next){
     var user=this;
@@ -90,6 +103,28 @@ UserSchema.statics.findByCredentials=function(email,password){
             });
         });
     };
-
+    UserSchema.statics.findByToken=function(token){
+        var User=this;
+        var decode;
+        try{
+          decode=jwt.verify(token,'abc123');
+    
+        }catch(e){
+            return Promise.reject();
+        }
+        return User.findOne({
+            '_id':decode._id,
+            'tokens.token':token,
+            'tokens.access':'auth'
+        });
+    };
+    UserSchema.methods.removeToken=function(token){
+        var user=this;
+        return user.update({
+            $pull:{
+              tokens:{token}
+            }
+        });
+    };
 var User=mongoose.model('User',UserSchema);
 module.exports={User};

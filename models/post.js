@@ -27,11 +27,22 @@ var PostSchema = new mongoose.Schema({
     dateModified: {
         type: Date, default: Date.now
     },
+    creator:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    comments: [{
+        text: String,
+        creator: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        }
+    }]
 });
 PostSchema.methods.toJSON = function () {
     var post = this;
-    var userObject = post.toObject();
-    return _.pick(userObject, ['_id', 'heading', 'body', 'imageUrl']);
+    var postObject = post.toObject();
+    return _.pick(postObject, ['_id', 'heading', 'body', 'imageUrl','creator.firstName','creator.lastName']);
 };
 var Post = mongoose.model('Post', PostSchema);
 module.exports = { Post };
