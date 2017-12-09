@@ -2,14 +2,14 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const multer = require('multer');
+const joi = require('joi');
+const moment = require('moment');
 const router = express.Router();
 
 const { Post } = require('../models/post');
 const { mongoose } = require('../db/connection');
 const { User } = require('../models/user');
-const{authenticate}=require('../middleware/authenticate');
-
-
+const { authenticate } = require('../middleware/authenticate');
 
 var storage = multer.diskStorage({
     destination: function (req, file, callback) {
@@ -27,7 +27,7 @@ var storage = multer.diskStorage({
     }
 });
 var upload = multer({ storage: storage, limits: { fileSize: 1000000 } }).single('imageUrl');
-router.post('/posts',authenticate, (req, res) => {
+router.post('/posts', authenticate, (req, res) => {
     upload(req, res, function (err) {
         if (err) {
             if (err.code === 'LIMIT_FILE_SIZE') {
@@ -45,7 +45,7 @@ router.post('/posts',authenticate, (req, res) => {
                 heading: req.body.heading,
                 body: req.body.body,
                 imageUrl: req.file.filename,
-                creator:req.user.id,
+                creator: req.user.id,
             });
             post.save().then((result) => {
                 res.send({ post: result, sucess: true, msg: 'Post created' });
@@ -56,22 +56,21 @@ router.post('/posts',authenticate, (req, res) => {
     });
 
 });
-router.get('/posts',authenticate, (req, res) => {
+router.get('/posts', authenticate, (req, res) => {
 
-    Post.find({creator:req.user.id}).populate('creator')
-    .populate('comments.creator').then((result) => {
+    Post.find({ creator: req.user.id }).sort('-dateCreated').populate('creator').populate( 'comments.commentuser',('firstName lastName') ).then((result) => {
         res.send({ posts: result, sucess: true });
-    }).catch((err) => {
-        res.send({ sucess: false, error: err });
-    });
+        }).catch((err) => {
+            res.send({ sucess: false, error: err });
+        });
 });
 
-router.get('/posts/:id',authenticate, (req, res) => {
+router.get('/posts/:id', authenticate, (req, res) => {
     var id = req.params.id;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).send({ success: false, msg: 'Bad Request Invalid Id' });
     }
-    Post.findOne({ _id: id,creator: req.user.id }).then((result) => {
+    Post.findOne({ _id: id, creator: req.user.id }).populate('creator').populate('comments.commentuser',('fistName lastName')).then((result) => {
         if (!result) {
             res.status(404).send({ sucess: false, msg: 'Post not found' });
         } else {
@@ -81,12 +80,27 @@ router.get('/posts/:id',authenticate, (req, res) => {
         res.send({ sucess: false, error: err });
     });
 });
-router.delete('/posts/:id',authenticate, (req, res) => {
+router.post('/comment/:id',authenticate,(req,res)=>{
+    Post.findOne({_id:req.params.id}).populate('creator').populate('comments.commentuser',('firstName lastName')).then((post)=>{
+        const newComment={
+            commentBody:req.body.commentBody,
+            commentuser:req.user.id
+        }
+        post.comments.unshift(newComment);
+        post.save().then((result)=>{
+                res.send({success:true,msg:'Comment Posted'})
+        }).catch((err)=>{
+            res.send({success:false,error:err})
+        });
+    });
+        
+    });
+router.delete('/posts/:id', authenticate, (req, res) => {
     var id = req.params.id;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).send({ success: false, msg: 'Bad Request invalid Id' });
     };
-    Post.findOneAndRemove({ _id: id,creator:req.user.id }).then((result) => {
+    Post.findOneAndRemove({ _id: id, creator: req.user.id }).then((result) => {
         if (!result) {
             res.status(404).send({ success: false, msg: 'Post not found' });
         }
@@ -98,15 +112,16 @@ router.delete('/posts/:id',authenticate, (req, res) => {
     });
 });
 
-router.patch('/posts/:id',authenticate, (req, res) => {
+router.patch('/posts/:id', authenticate, (req, res) => {
     var id = req.params.id;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).send({ success: false, msg: 'Bad Request Invalid Id' })
     }
-    Post.findOneAndUpdate({  _id: id,creator: req.user.id }, {
+    Post.findOneAndUpdate({ _id: id, creator: req.user.id }, {
         $set: {
             'heading': req.body.heading,
-            'body': req.body.body
+            'body': req.body.body,
+            'dateModified':Date.now()
         }
     }, { new: true }).then((result) => {
         res.send({ post: result, success: true, msg: 'update sucessfully' });
@@ -117,11 +132,25 @@ router.patch('/posts/:id',authenticate, (req, res) => {
 
 router.get('/search', (req, res) => {
     var matchelement = req.query.keyword;
-    Post.find({ $text: { $search: matchelement } }, { score: { $meta: "textScore" } }).sort({ score: { $meta: "textScore" } }).then((result) => {
+    Post.find({ $text: { $search: matchelement } }, { score: { $meta: "textScore" } }).sort({ score: { $meta: "textScore" } }).populate('creator').populate('comments.creator').then((result) => {
         res.send({ result })
     }).catch((err) => {
         res.send({ err });
     });
 });
+function validationPostData(req, res, next) {
+    let PostSchema = joi.object().keys({
+        heading: joi.string().min(10).max(40).required(),
+        body: joi.string().min(200).max(500).required(),
+        imageUrl: joi.string().required()
+    });
+    joi.validate(req.body, PostSchema, function (err, value) {
+        if (err) {
+
+            return res.status(400).send({ success: false, msg: 'Bad Request', error: err })
+        }
+        next();
+    });
+}
 
 module.exports = router;

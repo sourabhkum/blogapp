@@ -120,7 +120,7 @@ router.patch('/updateProfile', authenticate, (req, res) => {
                     'lastName': req.body.lastName,
                     'email': req.body.email,
                     'mobile': req.body.mobile,
-                    'userUrl':req.file.filename
+                    'userUrl': req.file.filename
                 }
             }, { new: true }).then((user) => {
                 res.send({ user: user, msg: 'update sucessfully', success: true })
