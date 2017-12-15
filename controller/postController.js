@@ -88,10 +88,14 @@ router.post('/comment/:id',authenticate,(req,res)=>{
         }
         post.comments.unshift(newComment);
         post.save().then((result)=>{
-                res.send({success:true,msg:'Comment Posted'})
-        }).catch((err)=>{
-            res.send({success:false,error:err})
-        });
+            if(result){
+                Post.findOne({_id:req.params.id}).populate('creator').populate('comments.commentuser',('firstName lastName')).then((post)=>{
+                    res.send({post:post,success:true,msg:'Comment Posted'})
+                }).catch((err)=>{
+                    res.send({success:false,error:err})
+                });
+            }  
+        })
     });
         
     });
